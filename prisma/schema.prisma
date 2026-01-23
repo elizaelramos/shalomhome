@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  nome      String     @db.VarChar(255)
+  apelido   String?    @db.VarChar(255)
+  email     String     @unique @db.VarChar(255)
+  senha     String?    @db.VarChar(255)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  familias  UserHome[]
+
+  @@map("users")
+}
+
+model Home {
+  id         Int           @id @default(autoincrement())
+  nome       String        @db.VarChar(255)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  transacoes Transaction[]
+  membros    UserHome[]
+  categorias Categoria[]
+
+  @@map("homes")
+}
+
+model Categoria {
+  id        Int           @id @default(autoincrement())
+  nome      String        @db.VarChar(100)
+  tipo      TipoTransacao
+  homeId    Int
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  home      Home          @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([nome, tipo, homeId])
+  @@index([homeId])
+  @@map("categorias")
+}
+
+model UserHome {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  homeId    Int
+  role      String   @default("membro") @db.VarChar(50)
+  createdAt DateTime @default(now())
+  home      Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, homeId])
+  @@index([homeId], map: "user_homes_homeId_fkey")
+  @@map("user_homes")
+}
+
+enum TransactionStatus {
+  PENDENTE
+  PAGO
+  PARCIAL
+  TRANSFERIDO
+}
+
+model Transaction {
+  id         Int           @id @default(autoincrement())
+  descricao  String        @db.VarChar(255)
+  valor      Decimal       @db.Decimal(10, 2)
+  tipo       TipoTransacao
+  categoria  String        @db.VarChar(100)
+  data       DateTime      @db.Date
+  pago       Boolean       @default(true)
+  pagoEm     DateTime?
+  status     TransactionStatus @default(PENDENTE)
+  origemId   Int?
+  homeId     Int
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  home       Home          @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  pagamentos Pagamento[]
+
+  @@index([homeId])
+  @@index([data])
+  @@index([tipo])
+  @@map("transactions")
+}
+
+model Pagamento {
+  id          Int         @id @default(autoincrement())
+  transacaoId Int
+  valor       Decimal     @db.Decimal(10, 2)
+  data        DateTime    @db.Date
+  createdAt   DateTime    @default(now())
+  transacao   Transaction @relation(fields: [transacaoId], references: [id], onDelete: Cascade)
+
+  @@index([transacaoId])
+  @@index([data])
+  @@map("pagamentos")
+}
+
+enum TipoTransacao {
+  ENTRADA
+  SAIDA
+}
+
+model Versiculo {
+  id         Int      @id @default(autoincrement())
+  texto      String   @db.Text
+  referencia String   @db.VarChar(100)
+  createdAt  DateTime @default(now())
+
+  @@map("versiculos")
+}
