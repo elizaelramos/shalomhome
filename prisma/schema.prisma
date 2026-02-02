@@ -27,7 +27,9 @@ model Home {
   updatedAt  DateTime      @updatedAt
   transacoes Transaction[]
   membros    UserHome[]
-  categorias Categoria[]
+  categorias      Categoria[]
+  itemCategorias  ItemCategoria[]
+  unidades        Unidade[]
 
   @@map("homes")
 }
@@ -81,13 +83,31 @@ model Transaction {
   homeId     Int
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
-  home       Home          @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  home       Home                @relation(fields: [homeId], references: [id], onDelete: Cascade)
   pagamentos Pagamento[]
+  items      TransactionItem[]
 
   @@index([homeId])
   @@index([data])
   @@index([tipo])
   @@map("transactions")
+}
+
+model TransactionItem {
+  id            Int         @id @default(autoincrement())
+  transacaoId   Int
+  descricao     String      @db.VarChar(255)
+  quantidade    Decimal?    @db.Decimal(10, 3)
+  unidade       String?     @db.VarChar(20)
+  valorTotal    Decimal     @db.Decimal(10, 2)
+  itemCategoria String?     @db.VarChar(100)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  transacao     Transaction @relation(fields: [transacaoId], references: [id], onDelete: Cascade)
+
+  @@index([transacaoId])
+  @@index([itemCategoria])
+  @@map("transaction_items")
 }
 
 model Pagamento {
@@ -115,4 +135,29 @@ model Versiculo {
   createdAt  DateTime @default(now())
 
   @@map("versiculos")
+}
+
+model ItemCategoria {
+  id        Int      @id @default(autoincrement())
+  nome      String   @db.VarChar(100)
+  homeId    Int
+  createdAt DateTime @default(now())
+  home      Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, nome])
+  @@index([homeId])
+  @@map("item_categorias")
+}
+
+model Unidade {
+  id         Int      @id @default(autoincrement())
+  nome       String   @db.VarChar(50)
+  abreviacao String   @db.VarChar(10)
+  homeId     Int
+  createdAt  DateTime @default(now())
+  home       Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, abreviacao])
+  @@index([homeId])
+  @@map("unidades")
 }
