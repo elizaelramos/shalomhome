@@ -72,7 +72,11 @@ export default async function DashboardFamiliaPage({ params, searchParams }: Pag
       previsaoDetalhesJan2026={previsaoDetalhesJan2026}
       membrosIniciais={familia.membros}
       categoriasIniciais={categorias}
-      usuario={session?.user ? { nome: session.user.name || "Usuário" } : undefined}
+      usuario={
+        session?.user
+          ? { nome: session.user.name || "Usuário", email: session.user.email || null, id: session.user.id || null }
+          : undefined
+      }
       currentUserRole={usuarioRole}
       versiculo={versiculo}
     />

@@ -1,11 +1,12 @@
 import RelatoriosClient from "@/components/RelatoriosClient";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export default function RelatoriosPage({ params }: PageProps) {
-  const familiaId = parseInt(params.id, 10);
+export default async function RelatoriosPage({ params }: PageProps) {
+  const { id } = await params;
+  const familiaId = parseInt(id, 10);
 
   if (isNaN(familiaId)) return <div>Família inválida</div>;
 

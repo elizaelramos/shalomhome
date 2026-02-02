@@ -11,6 +11,7 @@ import ModalRendimento, { RendimentoData } from "@/components/ModalRendimento";
 import ModalEditarTransacao from "@/components/ModalEditarTransacao";
 import ModalPagamentoParcial from "@/components/ModalPagamentoParcial";
 import { setPagoTransacao, transferirTransacao, registrarPagamentoParcial, transferirRestante } from "@/lib/actions/transacoes";
+import { useRouter } from "next/navigation";
 import ModalAdicionarMembro, { NovoMembroData } from "@/components/ModalAdicionarMembro";
 import ModalEditarMembro from "@/components/ModalEditarMembro";
 import ListaTransacoes, { Transacao } from "@/components/ListaTransacoes";
@@ -32,6 +33,8 @@ interface ResumoFinanceiro {
   previsao: number;
   transferidos: number;
   saldo: number;
+  saldoAnterior?: number;
+  saldoMes?: number;
 }
 
 interface VersiculoData {
@@ -47,7 +50,7 @@ interface DashboardClienteProps {
   membrosIniciais: Membro[];
   categoriasIniciais: CategoriaData[];
   previsaoDetalhesJan2026?: Array<{ id: number; descricao: string; categoria: string; data: string; valor: number; totalPago: number; restante: number; status: string | null }>;
-  usuario?: { nome: string };
+  usuario?: { nome: string; email?: string | null; id?: string | null };
   versiculo?: VersiculoData | null;
   currentUserRole?: string;
 }
@@ -64,6 +67,8 @@ export default function DashboardCliente({
   currentUserRole,
 }: DashboardClienteProps) {
   const primeiroNome = usuario?.nome?.split(" ")[0] || "Usuário";
+  const usuarioEmail = (usuario as any)?.email;
+  const usuarioId = (usuario as any)?.id;
   const [modalGastoAberto, setModalGastoAberto] = useState(false);
   const [categorias, setCategorias] = useState<CategoriaData[]>(categoriasIniciais);
   const [expandCategorias, setExpandCategorias] = useState(false);
@@ -83,6 +88,7 @@ export default function DashboardCliente({
   const [membros, setMembros] = useState<Membro[]>(membrosIniciais);
   const [resumo, setResumo] = useState<ResumoFinanceiro>(resumoInicial);
   const [salvando, setSalvando] = useState(false);
+  const router = useRouter();
 
   // Paginação para transações recentes
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -252,17 +258,24 @@ export default function DashboardCliente({
   const handleSalvarGasto = async (gasto: GastoData) => {
     setSalvando(true);
     try {
-      const resultado = await criarTransacao({
+      console.log('[DashboardCliente] Recebeu gasto:', gasto);
+      console.log('[DashboardCliente] Items do gasto:', gasto.items);
+
+      const transacaoData = {
         descricao: gasto.descricao,
         valor: gasto.valor,
-        tipo: "SAIDA",
+        tipo: "SAIDA" as const,
         categoria: gasto.categoria,
         data: gasto.data,
         homeId: familia.id,
         pago: gasto.pago,
         pagoEm: (gasto as any).pagoEm ?? null,
         status: (gasto as any).status ?? (gasto.pago ? 'PAGO' : 'PENDENTE'),
-      });
+        items: gasto.items,
+      };
+
+      console.log('[DashboardCliente] Enviando para criarTransacao:', transacaoData);
+      const resultado = await criarTransacao(transacaoData);
 
       if (resultado.success && resultado.transacao) {
         // Recarregar período e ir para a primeira página para ver o novo registro
@@ -463,6 +476,8 @@ export default function DashboardCliente({
                 <ArrowLeft className="w-4 h-4" />
                 <span className="text-sm">Voltar</span>
               </Link>
+ 
+
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
                 className="flex items-center gap-2 text-slate-600 hover:text-red-600 transition-colors"
@@ -484,7 +499,10 @@ export default function DashboardCliente({
                 <span className="font-medium text-slate-900">
                   Olá, {primeiroNome}!
                 </span>
-                {versiculo && (
+                    {usuarioEmail && (
+                      <span className="text-xs text-slate-600">{usuarioEmail} {usuarioId ? ` (id:${usuarioId})` : ''}</span>
+                    )}
+                    {versiculo && (
                   <span className="text-slate-600 text-sm">
                     <span className="hidden sm:inline">— </span>
                     <span className="italic">&ldquo;{versiculo.texto}&rdquo;</span>
@@ -546,6 +564,8 @@ export default function DashboardCliente({
               Relatórios
             </Link>
 
+            
+
             <button
               onClick={() => setModalRendimentoAberto(true)}
               disabled={salvando}
@@ -570,17 +590,52 @@ export default function DashboardCliente({
 
         {/* Cards de Resumo Financeiro */}
         <div className="flex gap-4 overflow-x-auto md:overflow-visible pb-4 md:pb-0 md:grid md:grid-cols-5 md:gap-6 mb-12">
-          {/* Card Saldo Total */}
-          <div className="min-w-[220px] md:min-w-0 flex-shrink-0 bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
-            <div className="flex items-center justify-center mb-4">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-xl flex items-center justify-center">
-                <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
+          {/* Card Saldo Total - com breakdown */}
+          <div className="min-w-[220px] md:min-w-0 flex-shrink-0 bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-xl flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-emerald-600" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-900">Saldo Total</h3>
+            </div>
+            <div className="space-y-2">
+              {/* Saldo Anterior */}
+              {resumo.saldoAnterior !== undefined && (
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="text-slate-600">Saldo anterior:</span>
+                  <span className={`font-medium ${resumo.saldoAnterior >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                    R$ {resumo.saldoAnterior.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              {/* Entradas do Mês */}
+              <div className="flex justify-between items-center text-xs sm:text-sm">
+                <span className="text-slate-600">Entradas do mês:</span>
+                <span className="font-medium text-emerald-600">
+                  +R$ {resumo.rendimentos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Gastos do Mês */}
+              <div className="flex justify-between items-center text-xs sm:text-sm">
+                <span className="text-slate-600">Gastos do mês:</span>
+                <span className="font-medium text-red-600">
+                  -R$ {resumo.gastos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Linha divisória */}
+              <div className="border-t border-slate-200 my-2"></div>
+
+              {/* Saldo Atual (acumulado) */}
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-slate-900">Saldo atual:</span>
+                <span className={`text-lg sm:text-xl font-bold ${resumo.saldo >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+                  R$ {resumo.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
               </div>
             </div>
-            <p className="text-sm text-slate-500 mb-1">Saldo Total</p>
-            <p className={`text-xl sm:text-2xl font-bold ${resumo.saldo >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
-              R$ {resumo.saldo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </p>
           </div>
 
           {/* Card Rendimentos */}
@@ -717,6 +772,7 @@ export default function DashboardCliente({
         onSave={handleSalvarGasto}
         initialDate={initialDate}
         categorias={categoriasGasto}
+        homeId={familia.id}
       />
 
       <ModalRendimento

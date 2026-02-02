@@ -38,6 +38,10 @@ export default function ListaFamilias({ familias: initialFamilias }: ListaFamili
     setFamilias((prev) => prev.map((f) => (f.id === updated.id ? { ...f, nome: updated.nome } : f)));
   };
 
+  const onDeleted = (id: number) => {
+    setFamilias((prev) => prev.filter((f) => f.id !== id));
+  };
+
   return (
     <>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
@@ -112,6 +116,7 @@ export default function ListaFamilias({ familias: initialFamilias }: ListaFamili
         onClose={() => setIsOpen(false)}
         familia={selected}
         onSaved={(f) => onSaved(f)}
+        onDeleted={(id) => onDeleted(id)}
       />
     </>
   );

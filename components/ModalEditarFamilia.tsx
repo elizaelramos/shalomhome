@@ -9,9 +9,10 @@ interface ModalEditarFamiliaProps {
   onClose: () => void;
   familia: { id: number; nome: string } | null;
   onSaved?: (familia: { id: number; nome: string }) => void;
+  onDeleted?: (id: number) => void;
 }
 
-export default function ModalEditarFamilia({ isOpen, onClose, familia, onSaved }: ModalEditarFamiliaProps) {
+export default function ModalEditarFamilia({ isOpen, onClose, familia, onSaved, onDeleted }: ModalEditarFamiliaProps) {
   const [nome, setNome] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +65,38 @@ export default function ModalEditarFamilia({ isOpen, onClose, familia, onSaved }
     }
   };
 
+  const handleDelete = async () => {
+    if (!familia) return;
+
+    const confirmar = window.confirm('Deseja realmente excluir esta família? Essa ação é irreversível.');
+    if (!confirmar) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/familias/deletar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: familia.id }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setError(data.error || 'Erro ao excluir família');
+      } else {
+        if (onDeleted) onDeleted(familia.id);
+        onClose();
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Erro de rede. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -92,6 +125,15 @@ export default function ModalEditarFamilia({ isOpen, onClose, familia, onSaved }
           >
             Cancelar
           </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={loading}
+            className="px-4 py-3 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white font-semibold shadow-lg hover:shadow-xl transition-all"
+          >
+            {loading ? '...' : 'Excluir Família'}
+          </button>
+
           <button
             type="submit"
             disabled={loading}

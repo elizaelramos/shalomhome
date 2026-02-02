@@ -6,7 +6,7 @@ export interface Membro {
   id: number;
   userId?: number;
   nome: string;
-  apelido?: string;
+  apelido?: string | null;
   email: string;
   role: string;
   createdAt: Date;
