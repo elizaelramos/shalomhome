@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 export interface MembroData {
   id: number;
   nome: string;
-  apelido?: string;
+  apelido?: string | null;
   email: string;
   role: string;
   createdAt: Date;

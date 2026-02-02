@@ -1,16 +1,25 @@
 import { NextResponse } from "next/server";
-import { getGastosPorCategoria, getResumoSimples, getResumoPagamentosMes, getTransacoesPorCategoria } from "@/lib/actions/relatorios";
+import {
+  getGastosPorCategoria,
+  getResumoSimples,
+  getResumoPagamentosMes,
+  getTransacoesPorCategoria,
+  getGastosPorItemCategoria,
+  getItensMaisComprados,
+  getItensComMaiorGasto
+} from "@/lib/actions/relatorios";
 import { auth } from "@/lib/auth";
 import { getFamiliaByIdForUser } from "@/lib/actions/familias";
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { searchParams } = new URL(request.url);
     const tipo = searchParams.get("tipo") ?? "porCategoria";
     const ano = searchParams.get("ano") ?? undefined;
     const mes = searchParams.get("mes") ?? undefined;
 
-    const id = parseInt(params.id, 10);
+    const { id: idParam } = await params;
+    const id = parseInt(idParam, 10);
 
     if (isNaN(id)) {
       return NextResponse.json({ error: "Invalid family id" }, { status: 400 });
@@ -48,6 +57,23 @@ export async function GET(request: Request, { params }: { params: { id: string }
     if (tipo === "pagamentosMensal") {
       const resumo = await getResumoPagamentosMes(id, ano, mes);
       return NextResponse.json({ type: 'pagamentosMensal', data: resumo });
+    }
+
+    if (tipo === "itemCategoria") {
+      const data = await getGastosPorItemCategoria(id, ano, mes);
+      return NextResponse.json({ type: 'itemCategoria', data });
+    }
+
+    if (tipo === "itensMaisComprados") {
+      const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : 20;
+      const data = await getItensMaisComprados(id, ano, mes, limit);
+      return NextResponse.json({ type: 'itensMaisComprados', data });
+    }
+
+    if (tipo === "maioresGastos") {
+      const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : 20;
+      const data = await getItensComMaiorGasto(id, ano, mes, limit);
+      return NextResponse.json({ type: 'maioresGastos', data });
     }
 
     return NextResponse.json({ error: "Tipo inválido" }, { status: 400 });

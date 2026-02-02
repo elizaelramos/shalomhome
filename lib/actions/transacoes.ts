@@ -16,6 +16,16 @@ interface TransacaoInput {
   pagoEm?: string | null;
   status?: "PENDENTE" | "PAGO" | "PARCIAL" | "TRANSFERIDO";
   origemId?: number | null;
+  items?: TransactionItemInput[];
+}
+
+// Interface para itens de transação
+export interface TransactionItemInput {
+  descricao: string;
+  quantidade?: number;
+  unidade?: string;
+  valorTotal: number;
+  itemCategoria?: string;
 }
 
 // Buscar transações de uma família (opcionalmente por ano, mês e paginação)
@@ -42,7 +52,7 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
           orderBy: { data: "desc" },
           skip: (page - 1) * limit,
           take: limit,
-          include: { pagamentos: true },
+          include: { pagamentos: true, items: true },
         }),
       ]);
 
@@ -67,6 +77,14 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
           origemId: t.origemId ?? null,
           totalPago,
           valorRestante,
+          items: (t.items || []).map((item: any) => ({
+            id: item.id,
+            descricao: item.descricao,
+            quantidade: item.quantidade ? Number(item.quantidade) : null,
+            unidade: item.unidade,
+            valorTotal: Number(item.valorTotal),
+            itemCategoria: item.itemCategoria,
+          })),
         };
       });
 
@@ -81,6 +99,7 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
       },
       include: {
         pagamentos: true,
+        items: true,
       },
     });
 
@@ -105,6 +124,14 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
         origemId: t.origemId ?? null,
         totalPago,
         valorRestante,
+        items: (t.items || []).map((item: any) => ({
+          id: item.id,
+          descricao: item.descricao,
+          quantidade: item.quantidade ? Number(item.quantidade) : null,
+          unidade: item.unidade,
+          valorTotal: Number(item.valorTotal),
+          itemCategoria: item.itemCategoria,
+        })),
       };
     });
   } catch (error) {
@@ -130,6 +157,30 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
     }
 
     try {
+      // Calcular saldo anterior (transações antes do período selecionado)
+      let saldoAnterior = 0;
+      if (start) {
+        // Buscar todas as transações anteriores ao período
+        const transacoesAnteriores = await prisma.transaction.findMany({
+          where: {
+            homeId,
+            data: { lt: start },
+          },
+          include: { pagamentos: true },
+        });
+
+        // Calcular saldo anterior baseado em entradas e pagamentos efetivos
+        for (const t of transacoesAnteriores) {
+          if (t.tipo === "ENTRADA") {
+            saldoAnterior += Number(t.valor);
+          } else if (t.tipo === "SAIDA" && t.status !== "TRANSFERIDO") {
+            // Para saídas, somar apenas os pagamentos efetivos
+            const totalPago = t.pagamentos.reduce((sum, p) => sum + Number(p.valor), 0);
+            saldoAnterior -= totalPago;
+          }
+        }
+      }
+
       // Buscar transações do mês incluindo pagamentos (para calcular valores restantes)
       const transacoesData = await prisma.transaction.findMany({
         where: whereData,
@@ -173,17 +224,44 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
         .filter((t) => t.tipo === "SAIDA" && t.status === "TRANSFERIDO")
         .reduce((acc, t) => acc + Number(t.valor), 0);
 
+      // Calcular saldo acumulado
+      const saldoAcumulado = saldoAnterior + rendimentos - gastos;
+
       return {
         rendimentos,
         gastos,
         previsao,
         transferidos,
-        saldo: rendimentos - gastos,
+        saldo: saldoAcumulado,
+        saldoAnterior,
+        saldoMes: rendimentos - gastos,
       };
     } catch (error) {
       // Em caso de banco antigo sem campos/relacionamentos, faz fallback para compatibilidade
       console.warn("Erro ao calcular resumo com pagamentos; usando fallback simplificado.", error);
       try {
+        // Calcular saldo anterior no fallback
+        let saldoAnterior = 0;
+        if (start) {
+          const transacoesAnteriores = await prisma.transaction.findMany({
+            where: {
+              homeId,
+              data: { lt: start },
+            },
+            select: { valor: true, tipo: true, pago: true },
+          });
+
+          const entradasAnteriores = transacoesAnteriores
+            .filter((t) => t.tipo === "ENTRADA")
+            .reduce((acc, t) => acc + Number(t.valor), 0);
+
+          const gastosAnteriores = transacoesAnteriores
+            .filter((t) => t.tipo === "SAIDA" && (t as any).pago !== false)
+            .reduce((acc, t) => acc + Number(t.valor), 0);
+
+          saldoAnterior = entradasAnteriores - gastosAnteriores;
+        }
+
         const transacoes = await prisma.transaction.findMany({
           where: whereData,
           select: { valor: true, tipo: true, pago: true, status: true },
@@ -199,12 +277,16 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
           .filter((t) => t.tipo === "SAIDA" && (t as any).pago === false)
           .reduce((acc, t) => acc + Number(t.valor), 0);
 
+        const saldoAcumulado = saldoAnterior + rendimentos - gastos;
+
         return {
           rendimentos,
           gastos,
           previsao,
           transferidos: 0,
-          saldo: rendimentos - gastos,
+          saldo: saldoAcumulado,
+          saldoAnterior,
+          saldoMes: rendimentos - gastos,
         };
       } catch (err) {
         console.error("Fallback também falhou ao calcular resumo financeiro:", err);
@@ -214,6 +296,56 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
   } catch (error) {
     console.error("Erro ao buscar resumo financeiro:", error);
     throw new Error("Não foi possível carregar o resumo financeiro");
+  }
+}
+
+// Buscar transação com itens incluídos
+export async function getTransacaoComItens(id: number) {
+  try {
+    const transacao = await prisma.transaction.findUnique({
+      where: { id },
+      include: {
+        items: true,
+        pagamentos: true,
+      },
+    });
+
+    if (!transacao) {
+      return null;
+    }
+
+    const valorTotal = Number(transacao.valor);
+    const totalPago = (transacao.pagamentos || []).reduce(
+      (acc: number, p: any) => acc + Number(p.valor),
+      0
+    );
+    const valorRestante = valorTotal - totalPago;
+
+    return {
+      id: transacao.id,
+      tipo: (transacao.tipo === "ENTRADA" ? "entrada" : "saida") as "entrada" | "saida",
+      descricao: transacao.descricao,
+      valor: valorTotal,
+      categoria: transacao.categoria,
+      data: transacao.data.toISOString().split("T")[0],
+      pago: transacao.pago,
+      pagoEm: transacao.pagoEm ? transacao.pagoEm.toISOString().split("T")[0] : null,
+      status: transacao.status ?? null,
+      origemId: transacao.origemId ?? null,
+      totalPago,
+      valorRestante,
+      items: (transacao.items || []).map((item: any) => ({
+        id: item.id,
+        descricao: item.descricao,
+        quantidade: item.quantidade ? Number(item.quantidade) : null,
+        unidade: item.unidade,
+        valorTotal: Number(item.valorTotal),
+        itemCategoria: item.itemCategoria,
+      })),
+    };
+  } catch (error) {
+    console.error("Erro ao buscar transação com itens:", error);
+    throw new Error("Não foi possível carregar a transação");
   }
 }
 
@@ -262,6 +394,12 @@ export async function getPrevisaoDetalhada(homeId: number, ano: string, mes: str
 // Criar nova transação (gasto ou rendimento)
 export async function criarTransacao(data: TransacaoInput) {
   try {
+    // Se items foram fornecidos, calcular valor total
+    let valorFinal = data.valor;
+    if (data.items && data.items.length > 0) {
+      valorFinal = data.items.reduce((sum, item) => sum + item.valorTotal, 0);
+    }
+
     // Tenta criar incluindo `pago` (se o campo existe). Se falhar por cliente Prisma estar
     // desatualizado, tenta criar sem o campo `pago`.
     let novaTransacao: any;
@@ -269,7 +407,7 @@ export async function criarTransacao(data: TransacaoInput) {
       novaTransacao = await prisma.transaction.create({
         data: {
           descricao: data.descricao,
-          valor: data.valor,
+          valor: valorFinal,
           tipo: data.tipo as TipoTransacao,
           categoria: data.categoria,
           data: new Date(data.data),
@@ -278,6 +416,18 @@ export async function criarTransacao(data: TransacaoInput) {
           status: (data as any).status ?? (data.tipo === "SAIDA" ? "PENDENTE" : "PAGO"),
           origemId: (data as any).origemId ?? null,
           homeId: data.homeId,
+          items: data.items && data.items.length > 0 ? {
+            create: data.items.map(item => ({
+              descricao: item.descricao,
+              quantidade: item.quantidade,
+              unidade: item.unidade,
+              valorTotal: item.valorTotal,
+              itemCategoria: item.itemCategoria,
+            }))
+          } : undefined,
+        },
+        include: {
+          items: true,
         },
       });
     } catch (err: any) {
@@ -287,11 +437,23 @@ export async function criarTransacao(data: TransacaoInput) {
         novaTransacao = await prisma.transaction.create({
           data: {
             descricao: data.descricao,
-            valor: data.valor,
+            valor: valorFinal,
             tipo: data.tipo as TipoTransacao,
             categoria: data.categoria,
             data: new Date(data.data),
             homeId: data.homeId,
+            items: data.items && data.items.length > 0 ? {
+              create: data.items.map(item => ({
+                descricao: item.descricao,
+                quantidade: item.quantidade,
+                unidade: item.unidade,
+                valorTotal: item.valorTotal,
+                itemCategoria: item.itemCategoria,
+              }))
+            } : undefined,
+          },
+          include: {
+            items: true,
           },
         });
       } else {
@@ -314,6 +476,14 @@ export async function criarTransacao(data: TransacaoInput) {
         pagoEm: novaTransacao.pagoEm ? novaTransacao.pagoEm.toISOString().split("T")[0] : null,
         status: (novaTransacao as any).status ?? null,
         origemId: (novaTransacao as any).origemId ?? null,
+        items: (novaTransacao.items || []).map((item: any) => ({
+          id: item.id,
+          descricao: item.descricao,
+          quantidade: item.quantidade ? Number(item.quantidade) : null,
+          unidade: item.unidade,
+          valorTotal: Number(item.valorTotal),
+          itemCategoria: item.itemCategoria,
+        })),
       },
     };
   } catch (error) {
@@ -331,6 +501,19 @@ export async function atualizarTransacao(
   data: Omit<TransacaoInput, "homeId">
 ) {
   try {
+    // Se items foram fornecidos, calcular valor total
+    let valorFinal = data.valor;
+    if (data.items && data.items.length > 0) {
+      valorFinal = data.items.reduce((sum, item) => sum + item.valorTotal, 0);
+    }
+
+    // Deletar items antigos se novos items foram fornecidos
+    if (data.items !== undefined) {
+      await prisma.transactionItem.deleteMany({
+        where: { transacaoId: id },
+      });
+    }
+
     // Tenta atualizar incluindo `pago` (se suportado). Em caso de validação por campo desconhecido
     // faz fallback e atualiza apenas os campos compatíveis.
     let transacaoAtualizada: any;
@@ -339,7 +522,7 @@ export async function atualizarTransacao(
         where: { id },
         data: {
           descricao: data.descricao,
-          valor: data.valor,
+          valor: valorFinal,
           tipo: data.tipo as TipoTransacao,
           categoria: data.categoria,
           data: new Date(data.data),
@@ -347,6 +530,18 @@ export async function atualizarTransacao(
           pagoEm: (data as any).pagoEm ? new Date((data as any).pagoEm) : undefined,
           status: (data as any).status !== undefined ? (data as any).status : undefined,
           origemId: (data as any).origemId !== undefined ? (data as any).origemId : undefined,
+          items: data.items && data.items.length > 0 ? {
+            create: data.items.map(item => ({
+              descricao: item.descricao,
+              quantidade: item.quantidade,
+              unidade: item.unidade,
+              valorTotal: item.valorTotal,
+              itemCategoria: item.itemCategoria,
+            }))
+          } : undefined,
+        },
+        include: {
+          items: true,
         },
       });
     } catch (err: any) {
@@ -357,10 +552,22 @@ export async function atualizarTransacao(
           where: { id },
           data: {
             descricao: data.descricao,
-            valor: data.valor,
+            valor: valorFinal,
             tipo: data.tipo as TipoTransacao,
             categoria: data.categoria,
             data: new Date(data.data),
+            items: data.items && data.items.length > 0 ? {
+              create: data.items.map(item => ({
+                descricao: item.descricao,
+                quantidade: item.quantidade,
+                unidade: item.unidade,
+                valorTotal: item.valorTotal,
+                itemCategoria: item.itemCategoria,
+              }))
+            } : undefined,
+          },
+          include: {
+            items: true,
           },
         });
       } else {
@@ -383,6 +590,14 @@ export async function atualizarTransacao(
         categoria: transacaoAtualizada.categoria,
         data: transacaoAtualizada.data.toISOString().split("T")[0],
         pago: transacaoAtualizada.pago,
+        items: (transacaoAtualizada.items || []).map((item: any) => ({
+          id: item.id,
+          descricao: item.descricao,
+          quantidade: item.quantidade ? Number(item.quantidade) : null,
+          unidade: item.unidade,
+          valorTotal: Number(item.valorTotal),
+          itemCategoria: item.itemCategoria,
+        })),
       },
     };
   } catch (error) {

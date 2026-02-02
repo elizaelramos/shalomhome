@@ -2,6 +2,7 @@
 
 import prisma from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
 
 // Buscar todas as famílias
 export async function getFamilias() {
@@ -12,10 +13,7 @@ export async function getFamilias() {
           select: { membros: true, transacoes: true },
         },
         transacoes: {
-          select: {
-            valor: true,
-            tipo: true,
-          },
+          include: { pagamentos: true },
         },
       },
       orderBy: {
@@ -23,12 +21,21 @@ export async function getFamilias() {
       },
     });
 
-    // Calcular saldo de cada família
+    // Calcular saldo de cada família considerando pagamentos parciais e status
     return familias.map((familia) => {
-      const saldo = familia.transacoes.reduce((acc, t) => {
-        const valor = Number(t.valor);
-        return t.tipo === "ENTRADA" ? acc + valor : acc - valor;
-      }, 0);
+      let saldo = 0;
+
+      for (const t of familia.transacoes) {
+        if (t.tipo === "ENTRADA") {
+          // Entradas sempre somam o valor total
+          saldo += Number(t.valor);
+        } else if (t.tipo === "SAIDA" && t.status !== "TRANSFERIDO") {
+          // Saídas (exceto transferidas): somar apenas pagamentos efetivos
+          const totalPago = t.pagamentos.reduce((sum, p) => sum + Number(p.valor), 0);
+          saldo -= totalPago;
+        }
+        // Transações TRANSFERIDAS não afetam o saldo
+      }
 
       return {
         id: familia.id,
@@ -56,7 +63,7 @@ export async function getFamiliasForUser(userId: number) {
               select: { membros: true, transacoes: true },
             },
             transacoes: {
-              select: { valor: true, tipo: true },
+              include: { pagamentos: true },
             },
           },
         },
@@ -67,10 +74,20 @@ export async function getFamiliasForUser(userId: number) {
     });
 
     return userHomes.map(({ home }) => {
-      const saldo = home.transacoes.reduce((acc, t) => {
-        const valor = Number(t.valor);
-        return t.tipo === "ENTRADA" ? acc + valor : acc - valor;
-      }, 0);
+      // Calcular saldo considerando pagamentos parciais e status
+      let saldo = 0;
+
+      for (const t of home.transacoes) {
+        if (t.tipo === "ENTRADA") {
+          // Entradas sempre somam o valor total
+          saldo += Number(t.valor);
+        } else if (t.tipo === "SAIDA" && t.status !== "TRANSFERIDO") {
+          // Saídas (exceto transferidas): somar apenas pagamentos efetivos
+          const totalPago = t.pagamentos.reduce((sum, p) => sum + Number(p.valor), 0);
+          saldo -= totalPago;
+        }
+        // Transações TRANSFERIDAS não afetam o saldo
+      }
 
       return {
         id: home.id,
@@ -219,6 +236,24 @@ export async function criarFamilia(nome: string) {
         },
       },
     });
+
+    // Asociar o usuário atual como membro (criador) da nova família
+    try {
+      const session = await auth();
+      const userId = session?.user?.id ? parseInt(session.user.id as string, 10) : null;
+
+      if (userId) {
+        await prisma.userHome.create({
+          data: {
+            userId,
+            homeId: novaFamilia.id,
+            role: "administrador",
+          },
+        });
+      }
+    } catch (e) {
+      console.error("Aviso: não foi possível associar usuário à família:", e);
+    }
 
     revalidatePath("/familias");
 
