@@ -8,7 +8,7 @@ module.exports = {
   apps: [
     {
       name: 'shalomhome',
-      script: 'npm',
+      script: 'node_modules/.bin/next',
       args: 'start',
       cwd: path.resolve(__dirname),
       env_production: {

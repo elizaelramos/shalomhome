@@ -70,25 +70,27 @@ enum TransactionStatus {
 }
 
 model Transaction {
-  id         Int           @id @default(autoincrement())
-  descricao  String        @db.VarChar(255)
-  valor      Decimal       @db.Decimal(10, 2)
-  tipo       TipoTransacao
-  categoria  String        @db.VarChar(100)
-  data       DateTime      @db.Date
-  pago       Boolean       @default(true)
-  pagoEm     DateTime?
-  status     TransactionStatus @default(PENDENTE)
-  origemId   Int?
-  homeId     Int
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  home       Home                @relation(fields: [homeId], references: [id], onDelete: Cascade)
-  pagamentos Pagamento[]
-  items      TransactionItem[]
+  id          Int           @id @default(autoincrement())
+  descricao   String        @db.VarChar(255)
+  valor       Decimal       @db.Decimal(10, 2)
+  tipo        TipoTransacao
+  categoria   String        @db.VarChar(100)
+  data        DateTime      @db.Date
+  competencia DateTime      @db.Date
+  pago        Boolean       @default(true)
+  pagoEm      DateTime?
+  status      TransactionStatus @default(PENDENTE)
+  origemId    Int?
+  homeId      Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  home        Home                @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  pagamentos  Pagamento[]
+  items       TransactionItem[]
 
   @@index([homeId])
   @@index([data])
+  @@index([competencia])
   @@index([tipo])
   @@map("transactions")
 }

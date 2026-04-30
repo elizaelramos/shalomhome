@@ -17,6 +17,7 @@ export interface RendimentoData {
   valor: number;
   fonte: string;
   data: string;
+  competencia: string;
 }
 
 export default function ModalRendimento({ isOpen, onClose, onSave, initialDate, categorias }: ModalRendimentoProps) {
@@ -24,16 +25,29 @@ export default function ModalRendimento({ isOpen, onClose, onSave, initialDate, 
   const [valor, setValor] = useState("");
   const [fonte, setFonte] = useState(categorias[0] || "");
   const [data, setData] = useState(initialDate ?? new Date().toISOString().split('T')[0]);
+  const [competenciaMes, setCompetenciaMes] = useState(
+    (initialDate ?? new Date().toISOString().split('T')[0]).substring(0, 7)
+  );
+  const [competenciaTocada, setCompetenciaTocada] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      setData(initialDate ?? new Date().toISOString().split('T')[0]);
+      const dataPadrao = initialDate ?? new Date().toISOString().split('T')[0];
+      setData(dataPadrao);
+      setCompetenciaMes(dataPadrao.substring(0, 7));
+      setCompetenciaTocada(false);
       if (categorias.length > 0 && !categorias.includes(fonte)) {
         setFonte(categorias[0]);
       }
     }
   }, [isOpen, initialDate, categorias, fonte]);
+
+  useEffect(() => {
+    if (!competenciaTocada && data) {
+      setCompetenciaMes(data.substring(0, 7));
+    }
+  }, [data, competenciaTocada]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,15 +65,19 @@ export default function ModalRendimento({ isOpen, onClose, onSave, initialDate, 
         valor: parseFloat(valor),
         fonte,
         data,
+        competencia: `${competenciaMes}-01`,
       };
 
       onSave(rendimentoData);
 
       // Limpar formulário
+      const dataPadraoReset = initialDate ?? new Date().toISOString().split('T')[0];
       setDescricao("");
       setValor("");
       setFonte(categorias[0] || "");
-      setData(initialDate ?? new Date().toISOString().split('T')[0]);
+      setData(dataPadraoReset);
+      setCompetenciaMes(dataPadraoReset.substring(0, 7));
+      setCompetenciaTocada(false);
       setLoading(false);
       onClose();
     }, 500);
@@ -144,6 +162,28 @@ export default function ModalRendimento({ isOpen, onClose, onSave, initialDate, 
             className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-slate-900"
             required
           />
+        </div>
+
+        {/* Mês de competência */}
+        <div className="space-y-2">
+          <label htmlFor="competencia" className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <Calendar className="w-4 h-4" />
+            Mês de competência
+          </label>
+          <input
+            type="month"
+            id="competencia"
+            value={competenciaMes}
+            onChange={(e) => {
+              setCompetenciaMes(e.target.value);
+              setCompetenciaTocada(true);
+            }}
+            className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 outline-none transition-all text-slate-900"
+            required
+          />
+          <p className="text-xs text-slate-500">
+            Mês em que o rendimento deve aparecer nos relatórios. Por padrão acompanha a data; altere se for um recebimento antecipado (ex: salário do próximo mês pago no fim deste).
+          </p>
         </div>
 
         {/* Botões */}

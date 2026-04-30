@@ -11,12 +11,19 @@ interface TransacaoInput {
   tipo: "ENTRADA" | "SAIDA";
   categoria: string;
   data: string;
+  competencia?: string;
   homeId: number;
   pago?: boolean;
   pagoEm?: string | null;
   status?: "PENDENTE" | "PAGO" | "PARCIAL" | "TRANSFERIDO";
   origemId?: number | null;
   items?: TransactionItemInput[];
+}
+
+// Primeiro dia do mês (UTC) a partir de uma string YYYY-MM-DD ou YYYY-MM-01
+function primeiroDiaDoMesUTC(dataStr: string): Date {
+  const [anoStr, mesStr] = dataStr.split("-");
+  return new Date(Date.UTC(Number(anoStr), Number(mesStr) - 1, 1, 0, 0, 0));
 }
 
 // Interface para itens de transação
@@ -40,7 +47,7 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
       const monthIndex = Number(mes) - 1; // 0-based for Date
       const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
       const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-      where.data = { gte: start, lt: next };
+      where.competencia = { gte: start, lt: next };
     }
 
     // Se paginação for fornecida, usar skip/take e retornar total
@@ -71,6 +78,7 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
           valor: valorTotal,
           categoria: t.categoria,
           data: t.data.toISOString().split("T")[0],
+          competencia: t.competencia ? t.competencia.toISOString().split("T")[0] : null,
           pago: t.pago,
           pagoEm: t.pagoEm ? t.pagoEm.toISOString().split("T")[0] : null,
           status: t.status ?? null,
@@ -118,6 +126,7 @@ export async function getTransacoesByFamilia(homeId: number, ano?: string, mes?:
         valor: valorTotal,
         categoria: t.categoria,
         data: t.data.toISOString().split("T")[0],
+        competencia: t.competencia ? t.competencia.toISOString().split("T")[0] : null,
         pago: t.pago,
         pagoEm: t.pagoEm ? t.pagoEm.toISOString().split("T")[0] : null,
         status: t.status ?? null,
@@ -153,7 +162,7 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
       const monthIndex = Number(mes) - 1;
       start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
       next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-      whereData.data = { gte: start, lt: next };
+      whereData.competencia = { gte: start, lt: next };
     }
 
     try {
@@ -164,7 +173,7 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
         const transacoesAnteriores = await prisma.transaction.findMany({
           where: {
             homeId,
-            data: { lt: start },
+            competencia: { lt: start },
           },
           include: { pagamentos: true },
         });
@@ -187,13 +196,13 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
         include: { pagamentos: true },
       });
 
-      // Gastos efetivamente pagos no mês: somar pagamentos cujo `data` está no mês e que pertençam a SAIDA
+      // Gastos do mês: pagamentos de transações SAIDA cuja competência cai no período.
+      // (Seguimos competência da transação, não data física do pagamento.)
       let pagamentosNoMes: any[] = [];
       if (start && next) {
         pagamentosNoMes = await (prisma as any).pagamento.findMany({
           where: {
-            data: { gte: start, lt: next },
-            transacao: { homeId, tipo: "SAIDA" },
+            transacao: { homeId, tipo: "SAIDA", competencia: { gte: start, lt: next } },
           },
         });
       } else {
@@ -246,7 +255,7 @@ export async function getResumoFinanceiro(homeId: number, ano?: string, mes?: st
           const transacoesAnteriores = await prisma.transaction.findMany({
             where: {
               homeId,
-              data: { lt: start },
+              competencia: { lt: start },
             },
             select: { valor: true, tipo: true, pago: true },
           });
@@ -328,6 +337,7 @@ export async function getTransacaoComItens(id: number) {
       valor: valorTotal,
       categoria: transacao.categoria,
       data: transacao.data.toISOString().split("T")[0],
+      competencia: transacao.competencia ? transacao.competencia.toISOString().split("T")[0] : null,
       pago: transacao.pago,
       pagoEm: transacao.pagoEm ? transacao.pagoEm.toISOString().split("T")[0] : null,
       status: transacao.status ?? null,
@@ -360,7 +370,7 @@ export async function getPrevisaoDetalhada(homeId: number, ano: string, mes: str
     const transacoes = await (prisma as any).transaction.findMany({
       where: {
         homeId,
-        data: { gte: start, lt: next },
+        competencia: { gte: start, lt: next },
         tipo: 'SAIDA',
       },
       include: { pagamentos: true },
@@ -400,6 +410,8 @@ export async function criarTransacao(data: TransacaoInput) {
       valorFinal = data.items.reduce((sum, item) => sum + item.valorTotal, 0);
     }
 
+    const competenciaDate = primeiroDiaDoMesUTC(data.competencia ?? data.data);
+
     // Tenta criar incluindo `pago` (se o campo existe). Se falhar por cliente Prisma estar
     // desatualizado, tenta criar sem o campo `pago`.
     let novaTransacao: any;
@@ -411,6 +423,7 @@ export async function criarTransacao(data: TransacaoInput) {
           tipo: data.tipo as TipoTransacao,
           categoria: data.categoria,
           data: new Date(data.data),
+          competencia: competenciaDate,
           pago: data.pago ?? (data.tipo === "SAIDA" ? false : true),
           pagoEm: data.pagoEm ? new Date(data.pagoEm) : null,
           status: (data as any).status ?? (data.tipo === "SAIDA" ? "PENDENTE" : "PAGO"),
@@ -441,6 +454,7 @@ export async function criarTransacao(data: TransacaoInput) {
             tipo: data.tipo as TipoTransacao,
             categoria: data.categoria,
             data: new Date(data.data),
+            competencia: competenciaDate,
             homeId: data.homeId,
             items: data.items && data.items.length > 0 ? {
               create: data.items.map(item => ({
@@ -461,6 +475,18 @@ export async function criarTransacao(data: TransacaoInput) {
       }
     }
 
+    // Se o gasto foi criado já marcado como pago, registrar o Pagamento correspondente
+    // para que entre em "gastos" (tabela Pagamento) e saia de "previsão".
+    if (data.tipo === "SAIDA" && (data.pago === true || (data as any).status === "PAGO")) {
+      await (prisma as any).pagamento.create({
+        data: {
+          transacaoId: novaTransacao.id,
+          valor: valorFinal,
+          data: data.pagoEm ? new Date(data.pagoEm) : new Date(data.data),
+        },
+      });
+    }
+
     revalidatePath(`/familias/${data.homeId}`);
 
     return {
@@ -472,6 +498,7 @@ export async function criarTransacao(data: TransacaoInput) {
         valor: Number(novaTransacao.valor),
         categoria: novaTransacao.categoria,
         data: novaTransacao.data.toISOString().split("T")[0],
+        competencia: novaTransacao.competencia ? novaTransacao.competencia.toISOString().split("T")[0] : null,
         pago: novaTransacao.pago,
         pagoEm: novaTransacao.pagoEm ? novaTransacao.pagoEm.toISOString().split("T")[0] : null,
         status: (novaTransacao as any).status ?? null,
@@ -514,6 +541,8 @@ export async function atualizarTransacao(
       });
     }
 
+    const competenciaDate = primeiroDiaDoMesUTC(data.competencia ?? data.data);
+
     // Tenta atualizar incluindo `pago` (se suportado). Em caso de validação por campo desconhecido
     // faz fallback e atualiza apenas os campos compatíveis.
     let transacaoAtualizada: any;
@@ -526,6 +555,7 @@ export async function atualizarTransacao(
           tipo: data.tipo as TipoTransacao,
           categoria: data.categoria,
           data: new Date(data.data),
+          competencia: competenciaDate,
           pago: (data as any).pago !== undefined ? (data as any).pago : undefined,
           pagoEm: (data as any).pagoEm ? new Date((data as any).pagoEm) : undefined,
           status: (data as any).status !== undefined ? (data as any).status : undefined,
@@ -556,6 +586,7 @@ export async function atualizarTransacao(
             tipo: data.tipo as TipoTransacao,
             categoria: data.categoria,
             data: new Date(data.data),
+            competencia: competenciaDate,
             items: data.items && data.items.length > 0 ? {
               create: data.items.map(item => ({
                 descricao: item.descricao,
@@ -575,6 +606,22 @@ export async function atualizarTransacao(
       }
     }
 
+    // Se a transação ficou marcada como paga, garantir que haja Pagamento cobrindo o restante.
+    if (transacaoAtualizada.tipo === "SAIDA" && (transacaoAtualizada.pago === true || (transacaoAtualizada as any).status === "PAGO")) {
+      const pagamentosAtuais = await (prisma as any).pagamento.findMany({ where: { transacaoId: id } });
+      const totalPago = pagamentosAtuais.reduce((acc: number, p: any) => acc + Number(p.valor), 0);
+      const restante = valorFinal - totalPago;
+      if (restante > 0.01) {
+        await (prisma as any).pagamento.create({
+          data: {
+            transacaoId: id,
+            valor: restante,
+            data: (data as any).pagoEm ? new Date((data as any).pagoEm) : new Date(data.data),
+          },
+        });
+      }
+    }
+
     // Buscar homeId para revalidar a página correta
     revalidatePath(`/familias/${transacaoAtualizada.homeId}`);
 
@@ -589,6 +636,7 @@ export async function atualizarTransacao(
         valor: Number(transacaoAtualizada.valor),
         categoria: transacaoAtualizada.categoria,
         data: transacaoAtualizada.data.toISOString().split("T")[0],
+        competencia: transacaoAtualizada.competencia ? transacaoAtualizada.competencia.toISOString().split("T")[0] : null,
         pago: transacaoAtualizada.pago,
         items: (transacaoAtualizada.items || []).map((item: any) => ({
           id: item.id,
@@ -669,6 +717,7 @@ export async function transferirTransacao(id: number) {
         tipo: transacao.tipo,
         categoria: transacao.categoria,
         data: target,
+        competencia: target,
         pago: false,
         status: "PENDENTE",
         origemId: transacao.id,
@@ -956,6 +1005,7 @@ export async function transferirRestante(transacaoId: number) {
         tipo: transacao.tipo,
         categoria: transacao.categoria,
         data: target,
+        competencia: target,
         pago: false,
         status: "PENDENTE",
         origemId: transacao.id,

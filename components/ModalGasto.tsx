@@ -21,6 +21,7 @@ export interface GastoData {
   valor: number;
   categoria: string;
   data: string;
+  competencia: string;
   pago: boolean;
   status?: "PENDENTE" | "PAGO" | "TRANSFERIDO";
   pagoEm?: string | null;
@@ -32,6 +33,10 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
   const [valor, setValor] = useState("");
   const [categoria, setCategoria] = useState(categorias[0] || "");
   const [data, setData] = useState(initialDate ?? new Date().toISOString().split('T')[0]);
+  const [competenciaMes, setCompetenciaMes] = useState(
+    (initialDate ?? new Date().toISOString().split('T')[0]).substring(0, 7)
+  );
+  const [competenciaTocada, setCompetenciaTocada] = useState(false);
   const [status, setStatus] = useState<'PENDENTE' | 'PAGO'>('PENDENTE');
   const [pago, setPago] = useState(false);
   const [pagoEm, setPagoEm] = useState<string | null>(null);
@@ -49,7 +54,10 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
   // Reset do formulário e carregamento de dados quando o modal abre
   useEffect(() => {
     if (isOpen && homeId) {
-      setData(initialDate ?? new Date().toISOString().split('T')[0]);
+      const dataPadrao = initialDate ?? new Date().toISOString().split('T')[0];
+      setData(dataPadrao);
+      setCompetenciaMes(dataPadrao.substring(0, 7));
+      setCompetenciaTocada(false);
       setStatus('PENDENTE');
       setPago(false);
       setPagoEm(null);
@@ -81,6 +89,13 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categorias]);
+
+  // Se o usuário ainda não alterou manualmente a competência, ela acompanha a data
+  useEffect(() => {
+    if (!competenciaTocada && data) {
+      setCompetenciaMes(data.substring(0, 7));
+    }
+  }, [data, competenciaTocada]);
 
   // Calcular valor total quando há itens
   const valorCalculado = itens.length > 0
@@ -172,6 +187,7 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
         valor: valorCalculado,
         categoria,
         data,
+        competencia: `${competenciaMes}-01`,
         pago: isPago,
         status: status,
         pagoEm: isPago ? (pagoEm ?? data) : null,
@@ -183,10 +199,13 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
       onSave(gastoData);
 
       // Limpar formulário
+      const dataPadraoReset = initialDate ?? new Date().toISOString().split('T')[0];
       setDescricao("");
       setValor("");
       setCategoria(categorias[0] || "");
-      setData(initialDate ?? new Date().toISOString().split('T')[0]);
+      setData(dataPadraoReset);
+      setCompetenciaMes(dataPadraoReset.substring(0, 7));
+      setCompetenciaTocada(false);
       setStatus('PENDENTE');
       setPago(false);
       setPagoEm(null);
@@ -432,6 +451,28 @@ export default function ModalGasto({ isOpen, onClose, onSave, initialDate, categ
             className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all text-slate-900"
             required
           />
+        </div>
+
+        {/* Mês de competência */}
+        <div className="space-y-2">
+          <label htmlFor="competencia" className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <Calendar className="w-4 h-4" />
+            Mês de competência
+          </label>
+          <input
+            type="month"
+            id="competencia"
+            value={competenciaMes}
+            onChange={(e) => {
+              setCompetenciaMes(e.target.value);
+              setCompetenciaTocada(true);
+            }}
+            className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 outline-none transition-all text-slate-900"
+            required
+          />
+          <p className="text-xs text-slate-500">
+            Mês em que o gasto deve aparecer nos relatórios. Por padrão acompanha a data; altere se for um gasto adiantado (ex: conta do próximo mês paga antes).
+          </p>
         </div>
 
         {/* Status */}

@@ -10,7 +10,7 @@ export async function getGastosPorCategoria(homeId: number, ano?: string, mes?: 
     const monthIndex = Number(mes) - 1;
     const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    where.data = { gte: start, lt: next };
+    where.competencia = { gte: start, lt: next };
   }
 
   // Excluir transferidos por padrão
@@ -35,7 +35,7 @@ export async function getTransacoesPorCategoria(homeId: number, categoria: strin
     const monthIndex = Number(mes) - 1;
     const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    where.data = { gte: start, lt: next };
+    where.competencia = { gte: start, lt: next };
   }
 
   // Excluir transferidos (seguindo o relatório por categoria)
@@ -75,7 +75,7 @@ export async function getResumoSimples(homeId: number, ano?: string, mes?: strin
     const monthIndex = Number(mes) - 1;
     start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    whereData.data = { gte: start, lt: next };
+    whereData.competencia = { gte: start, lt: next };
   }
 
   // Se não houver transações no período, retornar null para sinalizar "sem dados"
@@ -93,7 +93,7 @@ export async function getResumoSimples(homeId: number, ano?: string, mes?: strin
       where: {
         homeId,
         tipo: "ENTRADA",
-        data: { lt: start },
+        competencia: { lt: start },
       },
     });
 
@@ -104,7 +104,7 @@ export async function getResumoSimples(homeId: number, ano?: string, mes?: strin
         homeId,
         tipo: "SAIDA",
         status: { not: "TRANSFERIDO" },
-        data: { lt: start },
+        competencia: { lt: start },
       },
     });
 
@@ -151,7 +151,7 @@ export async function getResumoSimples(homeId: number, ano?: string, mes?: strin
   };
 }
 
-// Buscar pagamentos realizados em um mês específico (independente do mês do gasto)
+// Buscar pagamentos realizados em um mês específico (cashflow físico: por pagamento.data)
 export async function getPagamentosPorMes(homeId: number, ano?: string, mes?: string) {
   const where: any = {};
 
@@ -229,7 +229,7 @@ export async function getGastosPorItemCategoria(homeId: number, ano?: string, me
     const monthIndex = Number(mes) - 1;
     const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    where.data = { gte: start, lt: next };
+    where.competencia = { gte: start, lt: next };
   }
 
   // Excluir transferidos por padrão
@@ -277,7 +277,7 @@ export async function getItensMaisComprados(homeId: number, ano?: string, mes?: 
     const monthIndex = Number(mes) - 1;
     const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    where.data = { gte: start, lt: next };
+    where.competencia = { gte: start, lt: next };
   }
 
   // Excluir transferidos por padrão
@@ -344,7 +344,7 @@ export async function getItensComMaiorGasto(homeId: number, ano?: string, mes?: 
     const monthIndex = Number(mes) - 1;
     const start = new Date(Date.UTC(yearNum, monthIndex, 1, 0, 0, 0));
     const next = new Date(Date.UTC(yearNum, monthIndex + 1, 1, 0, 0, 0));
-    where.data = { gte: start, lt: next };
+    where.competencia = { gte: start, lt: next };
   }
 
   // Excluir transferidos por padrão

@@ -267,6 +267,7 @@ export default function DashboardCliente({
         tipo: "SAIDA" as const,
         categoria: gasto.categoria,
         data: gasto.data,
+        competencia: gasto.competencia,
         homeId: familia.id,
         pago: gasto.pago,
         pagoEm: (gasto as any).pagoEm ?? null,
@@ -299,6 +300,7 @@ export default function DashboardCliente({
         tipo: "ENTRADA",
         categoria: rendimento.fonte,
         data: rendimento.data,
+        competencia: rendimento.competencia,
         homeId: familia.id,
       });
 
